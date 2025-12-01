@@ -1,25 +1,25 @@
 """
-メッシュエディター - 画像にポリゴンを描いて三角分割メッシュを作成
+メッシュエディター - 画像にポリゴンを描いて三角形メッシュを作成
 """
 import pygame
 import json
+import os
 import math
-from config import SCREEN_WIDTH, SCREEN_HEIGHT, BLACK, WHITE, RED, YELLOW
+from config import SCREEN_WIDTH, SCREEN_HEIGHT, BLACK, WHITE, RED, YELLOW, get_japanese_font
 
 
-class ShapePlacement:
-    """三角分割されたポリゴンの情報"""
+class TriangleMesh:
+    """三角形メッシュの情報"""
     def __init__(self, x, y, color, triangles):
-        self.shape_type = "triangulated_polygon"
-        self.x = x
-        self.y = y
+        self.x = x  # 重心のX座標
+        self.y = y  # 重心のY座標
         self.color = color
-        self.triangles = triangles
+        self.triangles = triangles  # 相対座標の三角形リスト
     
     def to_dict(self):
         """辞書形式に変換"""
         return {
-            "type": self.shape_type,
+            "type": "triangulated_polygon",  # 後方互換性のため
             "x": self.x,
             "y": self.y,
             "color": self.color,
@@ -38,13 +38,13 @@ class ShapePlacement:
 
 
 class MeshEditor:
-    """メッシュエディタークラス（ポリゴン分割のみ）"""
+    """メッシュエディタークラス（三角形メッシュ専用）"""
     
     def __init__(self):
         """エディターを初期化"""
         pygame.init()
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-        pygame.display.set_caption("メッシュエディター - ポリゴン分割")
+        pygame.display.set_caption("メッシュエディター - 三角形メッシュ")
         self.clock = pygame.time.Clock()
         
         # 背景画像
@@ -53,14 +53,16 @@ class MeshEditor:
         self.image_offset_x = 0
         self.image_offset_y = 0
         self.image_scale = 1.0
+        self.mesh_scale = 0.2  # ゲームと同じ1/5スケール
+        self.original_image_size = None  # 元の画像サイズ（画像中心計算用）
         
-        # 配置されたポリゴンのリスト
-        self.placed_shapes = []
+        # 配置された三角形メッシュのリスト
+        self.meshes = []
         
         # 選択中の色
         self.selected_color = RED
         
-        # ポリゴン描画用
+        # ポリゴン描画用（非凸ポリゴンを描いて三角分割）
         self.drawing_polygon = False
         self.polygon_points = []  # 画像座標系での点のリスト
         self.current_polygon_points = []  # 画面座標系での点のリスト（描画用）
@@ -68,17 +70,16 @@ class MeshEditor:
     def load_background_image(self, image_path):
         """背景画像を読み込む"""
         try:
-            self.background_image = pygame.image.load(image_path)
+            original_image = pygame.image.load(image_path)
             self.background_path = image_path
-            # 画像を画面サイズに合わせてスケール
-            img_width, img_height = self.background_image.get_size()
-            scale_x = SCREEN_WIDTH / img_width
-            scale_y = SCREEN_HEIGHT / img_height
-            self.image_scale = min(scale_x, scale_y, 1.0)  # 拡大しない
+            # 画像をゲームと同じ1/5スケールで表示
+            img_width, img_height = original_image.get_size()
+            self.original_image_size = (img_width, img_height)  # 元の画像サイズを保存
+            self.image_scale = self.mesh_scale  # 1/5スケール
             scaled_width = int(img_width * self.image_scale)
             scaled_height = int(img_height * self.image_scale)
             self.background_image = pygame.transform.scale(
-                self.background_image, (scaled_width, scaled_height)
+                original_image, (scaled_width, scaled_height)
             )
             # 中央に配置
             self.image_offset_x = (SCREEN_WIDTH - scaled_width) // 2
@@ -191,28 +192,28 @@ class MeshEditor:
         return not (has_neg and has_pos)
     
     def finish_polygon(self):
-        """ポリゴンを完成して三角分割"""
+        """ポリゴンを完成して三角形メッシュに変換"""
         if len(self.polygon_points) < 3:
             return
         
-        # 三角分割
+        # 非凸ポリゴンを三角分割
         triangles = self.triangulate_polygon(self.polygon_points)
         
         if triangles:
-            # 重心を計算
+            # 重心を計算（画像座標系）- 物理演算に必要なので変更しない
             cx = sum(p[0] for p in self.polygon_points) / len(self.polygon_points)
             cy = sum(p[1] for p in self.polygon_points) / len(self.polygon_points)
             
-            # 相対座標に変換（重心を原点に）
+            # 相対座標に変換（重心を原点に）- 物理演算用
             relative_triangles = [
                 [(v[0] - cx, v[1] - cy) for v in triangle]
                 for triangle in triangles
             ]
             
-            # 三角分割されたポリゴンを形状として追加
-            shape = ShapePlacement(cx, cy, self.selected_color, relative_triangles)
-            self.placed_shapes.append(shape)
-            print(f"ポリゴンを三角分割しました: {len(triangles)}個の三角形")
+            # 三角形メッシュとして追加（重心は画像座標系での実際の位置）
+            mesh = TriangleMesh(cx, cy, self.selected_color, relative_triangles)
+            self.meshes.append(mesh)
+            print(f"三角形メッシュを作成しました: {len(triangles)}個の三角形")
         
         # 描画状態をリセット
         self.drawing_polygon = False
@@ -259,8 +260,8 @@ class MeshEditor:
                 
                 # 全削除
                 elif event.key == pygame.K_r:
-                    self.placed_shapes.clear()
-                    print("すべてのポリゴンを削除しました")
+                    self.meshes.clear()
+                    print("すべてのメッシュを削除しました")
             
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:  # 左クリック
@@ -305,22 +306,22 @@ class MeshEditor:
                                self.current_polygon_points[-1], 
                                self.current_polygon_points[0], 2)
         
-        # 配置されたポリゴンを描画
-        for shape in self.placed_shapes:
-            if shape.shape_type == "triangulated_polygon" and shape.triangles:
-                for triangle in shape.triangles:
-                    # 相対座標を絶対座標に変換
-                    abs_triangle = [
-                        (shape.x + v[0], shape.y + v[1])
-                        for v in triangle
-                    ]
-                    # 画面座標に変換
-                    screen_triangle = [
-                        self.image_to_screen_coords(t[0], t[1]) 
-                        for t in abs_triangle
-                    ]
-                    pygame.draw.polygon(self.screen, shape.color, screen_triangle)
-                    pygame.draw.polygon(self.screen, BLACK, screen_triangle, 1)
+        # 配置された三角形メッシュを描画
+        for mesh in self.meshes:
+            # mesh.x, mesh.yは画像座標系での重心位置
+            for triangle in mesh.triangles:
+                # 相対座標を絶対座標に変換（重心からの相対座標）
+                abs_triangle = [
+                    (mesh.x + v[0], mesh.y + v[1])
+                    for v in triangle
+                ]
+                # 画面座標に変換
+                screen_triangle = [
+                    self.image_to_screen_coords(t[0], t[1]) 
+                    for t in abs_triangle
+                ]
+                pygame.draw.polygon(self.screen, mesh.color, screen_triangle)
+                pygame.draw.polygon(self.screen, BLACK, screen_triangle, 1)
         
         # UI情報を表示
         self.draw_ui()
@@ -329,25 +330,25 @@ class MeshEditor:
     
     def draw_ui(self):
         """UIを描画"""
-        font = pygame.font.Font(None, 24)
-        small_font = pygame.font.Font(None, 20)
+        font = get_japanese_font(24)
+        small_font = get_japanese_font(20)
         
         y_offset = 10
         
         # タイトル
-        text = "メッシュエディター - ポリゴン分割"
+        text = "メッシュエディター - 三角形メッシュ"
         text_surface = font.render(text, True, WHITE)
         self.screen.blit(text_surface, (10, y_offset))
         y_offset += 30
         
         # ポリゴン描画中の情報
         if self.drawing_polygon:
-            point_text = f"点の数: {len(self.polygon_points)} (Enter/Spaceで完成, Escでキャンセル)"
+            point_text = f"点の数: {len(self.polygon_points)} (Enter/Spaceで三角分割, Escでキャンセル)"
             text_surface = font.render(point_text, True, YELLOW)
             self.screen.blit(text_surface, (10, y_offset))
             y_offset += 30
         else:
-            text = "W: ポリゴン描画開始"
+            text = "W: 非凸ポリゴン描画開始"
             text_surface = font.render(text, True, WHITE)
             self.screen.blit(text_surface, (10, y_offset))
             y_offset += 30
@@ -364,9 +365,9 @@ class MeshEditor:
         # 操作説明
         instructions = [
             "操作:",
-            "W: ポリゴン描画開始",
+            "W: 非凸ポリゴン描画",
             "クリック: 点を追加",
-            "Enter/Space: 完成（三角分割）",
+            "Enter/Space: 三角分割",
             "Esc: キャンセル",
             "C: 色切り替え",
             "R: 全削除",
@@ -378,8 +379,9 @@ class MeshEditor:
             self.screen.blit(text_surface, (SCREEN_WIDTH - 200, y_offset))
             y_offset += 25
         
-        # 配置数
-        count_text = f"ポリゴン数: {len(self.placed_shapes)}"
+        # 統計情報
+        total_triangles = sum(len(mesh.triangles) for mesh in self.meshes)
+        count_text = f"メッシュ数: {len(self.meshes)} | 三角形数: {total_triangles}"
         text_surface = font.render(count_text, True, WHITE)
         self.screen.blit(text_surface, (10, SCREEN_HEIGHT - 30))
     
@@ -387,7 +389,7 @@ class MeshEditor:
         """メッシュを保存"""
         mesh_data = {
             "background_image": self.background_path,
-            "shapes": [shape.to_dict() for shape in self.placed_shapes]
+            "shapes": [mesh.to_dict() for mesh in self.meshes]
         }
         
         try:
@@ -405,15 +407,38 @@ class MeshEditor:
             with open(filename, 'r', encoding='utf-8') as f:
                 mesh_data = json.load(f)
             
-            # 背景画像を読み込み
+            # 背景画像を読み込み（相対パスの場合はmesh.jsonと同じフォルダから探す）
             if "background_image" in mesh_data and mesh_data["background_image"]:
-                self.load_background_image(mesh_data["background_image"])
+                image_path = mesh_data["background_image"]
+                # 相対パスの場合、mesh.jsonと同じフォルダから探す
+                if not os.path.isabs(image_path):
+                    mesh_dir = os.path.dirname(os.path.abspath(filename))
+                    image_path = os.path.join(mesh_dir, os.path.basename(image_path))
+                self.load_background_image(image_path)
             
-            # 形状を読み込み
-            self.placed_shapes = [
-                ShapePlacement.from_dict(shape_data)
+            # 三角形メッシュを読み込み
+            loaded_meshes = [
+                TriangleMesh.from_dict(shape_data)
                 for shape_data in mesh_data.get("shapes", [])
             ]
+            
+            # 既存のメッシュデータが画像中心基準でない場合、変換する
+            # （後方互換性のため、画像中心基準に変換）
+            if self.original_image_size:
+                img_width, img_height = self.original_image_size
+                image_center_x = img_width / 2.0
+                image_center_y = img_height / 2.0
+                
+                # メッシュの重心が画像中心から離れている場合、画像中心基準に変換
+                for mesh in loaded_meshes:
+                    # 既に画像中心基準の可能性があるが、念のため確認
+                    # メッシュの重心が画像サイズの範囲外にある場合、画像座標系と判断
+                    if abs(mesh.x) > img_width or abs(mesh.y) > img_height:
+                        # 画像座標系から画像中心基準に変換
+                        mesh.x = mesh.x - image_center_x
+                        mesh.y = mesh.y - image_center_y
+            
+            self.meshes = loaded_meshes
             
             print(f"メッシュを読み込みました: {filename}")
             return True
@@ -423,20 +448,19 @@ class MeshEditor:
     
     def get_mesh_definition(self):
         """メッシュ定義を取得（NonConvexObject用）"""
-        shape_definitions = []
-        for shape in self.placed_shapes:
-            if shape.shape_type == "triangulated_polygon" and shape.triangles:
-                for triangle in shape.triangles:
-                    # 相対座標を絶対座標に変換
-                    abs_triangle = [
-                        (shape.x + v[0], shape.y + v[1])
-                        for v in triangle
-                    ]
-                    shape_definitions.append({
-                        "type": "poly",
-                        "vertices": abs_triangle
-                    })
-        return shape_definitions
+        mesh_definitions = []
+        for mesh in self.meshes:
+            for triangle in mesh.triangles:
+                # 相対座標を絶対座標に変換
+                abs_triangle = [
+                    (mesh.x + v[0], mesh.y + v[1])
+                    for v in triangle
+                ]
+                mesh_definitions.append({
+                    "type": "poly",
+                    "vertices": abs_triangle
+                })
+        return mesh_definitions
     
     def run(self):
         """エディターのメインループ"""
