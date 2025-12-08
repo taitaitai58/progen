@@ -208,15 +208,18 @@ class TestGame:
             if event.type == pygame.QUIT:
                 return False
             
-            elif event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 1:  # 左クリック
-                    x, y = event.pos
-                    # 物理エンジンONでオブジェクトを生成
-                    self.create_object(x, y, physics_enabled=False)
-                elif event.button == 3:  # 右クリック
-                    x, y = event.pos
-                    # 物理エンジンOFFでオブジェクトを生成
-                    self.create_object(x, y, physics_enabled=False)
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                x, y = event.pos
+
+                # ★ 古い操作中オブジェクトがあれば落下させる（これが強制落下）
+                for o in self.objects:
+                    if not o.is_ready_to_fall:
+                        o.is_ready_to_fall = True
+                        o.enable_physics()
+
+                # ★ 新しいオブジェクト（物理OFF）を生成
+                self.create_object(x, y, physics_enabled=False)
+
             
             elif event.type == pygame.KEYDOWN:
                 obj = self.get_selected_object()               
@@ -276,6 +279,8 @@ class TestGame:
                     if obj:
                         obj.set_angle_degrees(0)
                         print("角度をリセットしました")
+                
+                
         
         # 連続入力の処理
         obj = self.get_selected_object()
@@ -287,12 +292,6 @@ class TestGame:
             if keys[pygame.K_RIGHT]:
                 x, y = obj.get_position()
                 obj.set_position(x + self.move_speed, y)
-            if keys[pygame.K_UP]:
-                x, y = obj.get_position()
-                obj.set_position(x, y - self.move_speed)
-            if keys[pygame.K_DOWN]:
-                x, y = obj.get_position()
-                obj.set_position(x, y + self.move_speed)
             
             # Q/Eキーで角度を変更
             if keys[pygame.K_q]:
@@ -343,6 +342,14 @@ class TestGame:
             self.objects.remove(obj)
             if self.selected_object_index >= len(self.objects):
                 self.selected_object_index = len(self.objects) - 1
+        
+        for obj in self.objects:
+            if not obj.is_ready_to_fall:
+            # ← このフラグが False の間は空中に固定
+                obj.set_velocity(0, 0)
+                obj.set_angular_velocity(0)
+                continue
+
     
         if self.game_over:
              return  # ゲームオーバー時は何もしない
@@ -393,6 +400,12 @@ class TestGame:
             self.screen.blit(text, (SCREEN_WIDTH//2 - 150, SCREEN_HEIGHT//2 - 30))
 
         pygame.display.flip()
+    
+    def get_controlled_object(self):
+        for obj in self.objects:
+            if not obj.is_ready_to_fall:
+                return obj
+        return None
 
        
 
