@@ -7,13 +7,13 @@ import pymunk
 import os
 import json
 import math
+import random
 from config import (
     SCREEN_WIDTH, SCREEN_HEIGHT, GRAVITY, FPS,
     GROUND_HEIGHT, GROUND_Y, BLACK, GREEN, WHITE, RED, YELLOW, BLUE,
     get_japanese_font
 )
 from animals import NonConvexObject
-from mesh_editor import TriangleMesh
 
 
 class TestGame:
@@ -38,11 +38,8 @@ class TestGame:
         self.create_ground()
         
         # メッシュの読み込み
-        self.mesh_definitions = []
-        self.texture_path = None
-        self.mesh_center = (0, 0)
-        self.image_size = None
-        self.load_default_mesh()
+        self.available_meshes = []  # 利用可能なメッシュのリスト
+        self.load_all_meshes()
         
         # 操作モード
         self.control_mode = "physics"  # "physics" or "manual"
@@ -69,106 +66,140 @@ class TestGame:
         
        
     
-    def load_default_mesh(self):
-        """デフォルトのメッシュを読み込み"""
-        mesh_folder = "meshes/mesh1"
+    def load_all_meshes(self):
+        """meshesフォルダ内のすべてのメッシュを読み込み"""
+        meshes_dir = "meshes"
+        if not os.path.exists(meshes_dir):
+            print(f"メッシュフォルダが見つかりません: {meshes_dir}")
+            self.create_fallback_mesh()
+            return
+        
+        # meshesフォルダ内のすべてのサブフォルダを検索
+        for item in os.listdir(meshes_dir):
+            mesh_folder = os.path.join(meshes_dir, item)
+            if os.path.isdir(mesh_folder):
+                mesh_json = os.path.join(mesh_folder, "mesh.json")
+                if os.path.exists(mesh_json):
+                    mesh_info = self.load_mesh_from_folder(mesh_folder)
+                    if mesh_info:
+                        self.available_meshes.append(mesh_info)
+                        print(f"メッシュを読み込みました: {item} ({len(mesh_info['mesh_definitions'])}個の三角形)")
+        
+        if len(self.available_meshes) == 0:
+            print("利用可能なメッシュが見つかりません。フォールバックメッシュを使用します。")
+            self.create_fallback_mesh()
+        else:
+            print(f"合計 {len(self.available_meshes)} 個のメッシュを読み込みました")
+    
+    def load_mesh_from_folder(self, mesh_folder):
+        """指定されたフォルダからメッシュを読み込み（新形式のみ対応）"""
         mesh_json = os.path.join(mesh_folder, "mesh.json")
         
-        if os.path.exists(mesh_json):
-            try:
-                with open(mesh_json, 'r', encoding='utf-8') as f:
-                    mesh_data = json.load(f)
-                
-                # メッシュ定義を取得
-                meshes = [TriangleMesh.from_dict(s) for s in mesh_data.get("shapes", [])]
-                
-                # 画像パスを取得
-                image_path = None
-                if "background_image" in mesh_data and mesh_data["background_image"]:
-                    bg_img_path = mesh_data["background_image"]
-                    if not os.path.isabs(bg_img_path):
-                        image_path = os.path.join(mesh_folder, os.path.basename(bg_img_path))
-                    else:
-                        image_path = bg_img_path
-                
-                # 画像が見つからない場合、メッシュフォルダ内の画像ファイルを探す
-                if not image_path or not os.path.exists(image_path):
-                    for ext in ['.png', '.jpg', '.jpeg', '.bmp']:
-                        for file in os.listdir(mesh_folder):
-                            if file.lower().endswith(ext) and file != os.path.basename(mesh_json):
-                                image_path = os.path.join(mesh_folder, file)
-                                break
-                        if image_path and os.path.exists(image_path):
+        if not os.path.exists(mesh_json):
+            return None
+        
+        try:
+            with open(mesh_json, 'r', encoding='utf-8') as f:
+                mesh_data = json.load(f)
+            
+            # 新形式チェック
+            if mesh_data.get("version", 1) < 2:
+                print(f"警告: 旧形式のmesh.jsonは非対応です。エディタで再作成してください: {mesh_json}")
+                return None
+            
+            # 画像パスを取得
+            image_path = None
+            if "background_image" in mesh_data and mesh_data["background_image"]:
+                bg_img_path = mesh_data["background_image"]
+                if not os.path.isabs(bg_img_path):
+                    image_path = os.path.join(mesh_folder, os.path.basename(bg_img_path))
+                else:
+                    image_path = bg_img_path
+            
+            # 画像が見つからない場合、フォルダ内を探す
+            if not image_path or not os.path.exists(image_path):
+                for ext in ['.png', '.jpg', '.jpeg', '.bmp']:
+                    for file in os.listdir(mesh_folder):
+                        if file.lower().endswith(ext):
+                            image_path = os.path.join(mesh_folder, file)
                             break
+                    if image_path and os.path.exists(image_path):
+                        break
+            
+            # メッシュデータを読み込み
+            scale = mesh_data.get("scale", 0.15)
+            scaled_image_size = mesh_data.get("scaled_image_size")
+            
+            mesh_definitions = []
+            mesh_center = None
+            
+            for shape in mesh_data.get("shapes", []):
+                center_x = shape.get("center_x", 0)
+                center_y = shape.get("center_y", 0)
                 
-                if image_path and os.path.exists(image_path):
-                    self.texture_path = image_path
+                if mesh_center is None:
+                    mesh_center = (center_x, center_y)
                 
-                # 画像サイズを取得
-                if image_path and os.path.exists(image_path):
-                    try:
-                        temp_img = pygame.image.load(image_path)
-                        self.image_size = temp_img.get_size()
-                    except:
-                        pass
-                
-                # メッシュ定義を作成（1/5スケール）
-                mesh_definitions = []
-                scale = 0.2  # 1/5スケール
-                
-                # メッシュの重心位置を保存（画像座標系の絶対座標のまま）
-                # mesh_centerは画像座標系（左上が原点）での絶対座標
-                mesh_center_x = meshes[0].x if meshes else 0
-                mesh_center_y = meshes[0].y if meshes else 0
-                self.mesh_center = (mesh_center_x, mesh_center_y)
-                
-                for mesh in meshes:
-                    for triangle in mesh.triangles:
-                        abs_triangle = [
-                            ((mesh.x + v[0]) * scale, (mesh.y + v[1]) * scale)
-                            for v in triangle
-                        ]
-                        mesh_definitions.append({
-                            "type": "poly",
-                            "vertices": abs_triangle
-                        })
-                
-                self.mesh_definitions = mesh_definitions
-                print(f"メッシュを読み込みました: {len(mesh_definitions)}個の三角形")
-            except Exception as e:
-                print(f"メッシュの読み込みに失敗しました: {e}")
-                # フォールバック：簡単な三角形を作成
-                self.create_fallback_mesh()
-        else:
-            # フォールバック：簡単な三角形を作成
-            self.create_fallback_mesh()
+                for triangle in shape.get("triangles", []):
+                    abs_triangle = [(center_x + v[0], center_y + v[1]) for v in triangle]
+                    mesh_definitions.append({"type": "poly", "vertices": abs_triangle})
+            
+            if not mesh_definitions:
+                return None
+            
+            return {
+                "mesh_definitions": mesh_definitions,
+                "texture_path": image_path if image_path and os.path.exists(image_path) else None,
+                "mesh_center": mesh_center,
+                "scaled_image_size": scaled_image_size,
+                "scale": scale
+            }
+            
+        except Exception as e:
+            print(f"メッシュの読み込みに失敗しました ({mesh_folder}): {e}")
+            return None
     
     def create_fallback_mesh(self):
         """フォールバック用の簡単なメッシュを作成"""
         size = 50
-        self.mesh_definitions = [{
-            "type": "poly",
-            "vertices": [
-                (0, -size),
-                (-size * 0.866, size * 0.5),
-                (size * 0.866, size * 0.5)
-            ]
-        }]
-        self.mesh_center = (0, 0)
-        self.image_size = None
-        self.texture_path = None
+        fallback_mesh = {
+            "mesh_definitions": [{
+                "type": "poly",
+                "vertices": [
+                    (0, -size),
+                    (-size * 0.866, size * 0.5),
+                    (size * 0.866, size * 0.5)
+                ]
+            }],
+            "mesh_center": (0, 0),
+            "image_size": None,
+            "texture_path": None
+        }
+        self.available_meshes = [fallback_mesh]
     
     def create_object(self, x, y, physics_enabled=True):
-        """オブジェクトを生成"""
+        """オブジェクトを生成（ランダムにメッシュを選択）"""
+        # 利用可能なメッシュからランダムに選択
+        if len(self.available_meshes) == 0:
+            print("利用可能なメッシュがありません")
+            return None
+        
+        selected_mesh = random.choice(self.available_meshes)
+        
+        # mesh_definitionsはコピーして渡す（元データを変更しないため）
+        import copy
+        mesh_defs_copy = copy.deepcopy(selected_mesh["mesh_definitions"])
+        
         obj = NonConvexObject.create(
             space=self.space,
             x=x,
             y=y,
-            mesh_definitions=self.mesh_definitions.copy(),
+            mesh_definitions=mesh_defs_copy,
             color=(255, 100, 100),
-            texture_path=self.texture_path,
-            mesh_center=self.mesh_center,
-            image_size=self.image_size,
+            texture_path=selected_mesh["texture_path"],
+            mesh_center=selected_mesh["mesh_center"],
+            scaled_image_size=selected_mesh.get("scaled_image_size"),
+            scale=selected_mesh.get("scale"),
             physics_enabled=False  # 位置選択中は物理エンジンを無効にする
         )
         obj.is_ready_to_fall = False
