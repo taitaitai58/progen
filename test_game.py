@@ -64,7 +64,7 @@ class TestGame:
             (3*SCREEN_WIDTH/4, GROUND_Y),
             5
         )
-        ground_shape.friction = 1.0
+        ground_shape.friction = 15.0  # 摩擦を強く設定
         self.space.add(ground_body, ground_shape)
         
        
@@ -169,7 +169,7 @@ class TestGame:
             texture_path=self.texture_path,
             mesh_center=self.mesh_center,
             image_size=self.image_size,
-            physics_enabled=physics_enabled
+            physics_enabled=False  # 位置選択中は物理エンジンを無効にする
         )
         obj.is_ready_to_fall = False
 
@@ -230,8 +230,11 @@ class TestGame:
                 elif event.key == pygame.K_SPACE:
                     obj = self.get_selected_object()
                     if obj:
+                        # 位置選択が終わったので、物理エンジンを有効にして落下開始
                         obj.is_ready_to_fall = True
                         obj.enable_physics()
+                        # 落下開始時は速度を0にリセット（重力のみで落下）
+                        obj.set_velocity(0, 0)
                         print("落下開始！")
                 
                 # 物理エンジンのON/OFF
@@ -314,7 +317,17 @@ class TestGame:
     
     def update(self):
         """ゲームの状態を更新"""
-        # 物理エンジンの更新
+        # 選択中のオブジェクトで位置選択中のものは物理エンジンを無効にする
+        selected_obj = self.get_selected_object()
+        if selected_obj and not selected_obj.is_ready_to_fall:
+            # 位置選択中は物理エンジンを無効にして、重力の影響を受けないようにする
+            if selected_obj.is_physics_enabled():
+                selected_obj.disable_physics()
+            # 速度も0にリセット（念のため）
+            selected_obj.body.velocity = (0, 0)
+            selected_obj.body.angular_velocity = 0
+        
+        # 物理エンジンの更新（1回のみ）
         dt = 1.0 / FPS
         self.space.step(dt)
         
@@ -330,19 +343,9 @@ class TestGame:
             self.objects.remove(obj)
             if self.selected_object_index >= len(self.objects):
                 self.selected_object_index = len(self.objects) - 1
-        
-        for obj in self.objects:
-            if not obj.is_ready_to_fall:
-            # ← このフラグが False の間は空中に固定
-                obj.set_velocity(0, 0)
-                continue
-
     
         if self.game_over:
              return  # ゲームオーバー時は何もしない
-
-        dt = 1.0 / FPS
-        self.space.step(dt)
 
         margin = 50
 

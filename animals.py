@@ -143,7 +143,7 @@ class NonConvexObject:
             if mesh_def["type"] == "poly":
                 vertices = mesh_def["vertices"]
                 shape = pymunk.Poly(self.body, vertices)
-                shape.friction = 0.7
+                shape.friction = 15.0  # 摩擦を強く設定
                 shape.elasticity = 0.3
                 self.shapes.append(shape)
         
