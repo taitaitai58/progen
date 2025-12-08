@@ -48,6 +48,11 @@ class TestGame:
         self.control_mode = "physics"  # "physics" or "manual"
         self.move_speed = 5.0
         self.rotate_speed = 5.0  # 度/フレーム
+
+        # ゲームオーバー判定
+        self.game_over = False
+
+
     
     def create_ground(self):
         """地面を作成"""
@@ -55,34 +60,14 @@ class TestGame:
         ground_body = pymunk.Body(body_type=pymunk.Body.STATIC)
         ground_shape = pymunk.Segment(
             ground_body,
-            (0, GROUND_Y),
-            (SCREEN_WIDTH, GROUND_Y),
+            (SCREEN_WIDTH/4, GROUND_Y),
+            (3*SCREEN_WIDTH/4, GROUND_Y),
             5
         )
         ground_shape.friction = 1.0
         self.space.add(ground_body, ground_shape)
         
-        # 左側の壁
-        left_wall = pymunk.Body(body_type=pymunk.Body.STATIC)
-        left_wall_shape = pymunk.Segment(
-            left_wall,
-            (0, 0),
-            (0, SCREEN_HEIGHT),
-            5
-        )
-        left_wall_shape.friction = 1.0
-        self.space.add(left_wall, left_wall_shape)
-        
-        # 右側の壁
-        right_wall = pymunk.Body(body_type=pymunk.Body.STATIC)
-        right_wall_shape = pymunk.Segment(
-            right_wall,
-            (SCREEN_WIDTH, 0),
-            (SCREEN_WIDTH, SCREEN_HEIGHT),
-            5
-        )
-        right_wall_shape.friction = 1.0
-        self.space.add(right_wall, right_wall_shape)
+       
     
     def load_default_mesh(self):
         """デフォルトのメッシュを読み込み"""
@@ -186,9 +171,14 @@ class TestGame:
             image_size=self.image_size,
             physics_enabled=physics_enabled
         )
+        obj.is_ready_to_fall = False
+
         self.objects.append(obj)
         self.selected_object_index = len(self.objects) - 1
         return obj
+    
+        
+
     
     def get_selected_object(self):
         """選択中のオブジェクトを取得"""
@@ -222,21 +212,27 @@ class TestGame:
                 if event.button == 1:  # 左クリック
                     x, y = event.pos
                     # 物理エンジンONでオブジェクトを生成
-                    self.create_object(x, y, physics_enabled=True)
+                    self.create_object(x, y, physics_enabled=False)
                 elif event.button == 3:  # 右クリック
                     x, y = event.pos
                     # 物理エンジンOFFでオブジェクトを生成
                     self.create_object(x, y, physics_enabled=False)
             
             elif event.type == pygame.KEYDOWN:
-                obj = self.get_selected_object()
-                
+                obj = self.get_selected_object()               
                 # オブジェクト選択
                 if event.key == pygame.K_TAB:
                     if pygame.key.get_mods() & pygame.KMOD_SHIFT:
                         self.select_previous_object()
                     else:
                         self.select_next_object()
+                
+                elif event.key == pygame.K_SPACE:
+                    obj = self.get_selected_object()
+                    if obj:
+                        obj.is_ready_to_fall = True
+                        obj.enable_physics()
+                        print("落下開始！")
                 
                 # 物理エンジンのON/OFF
                 elif event.key == pygame.K_p:
@@ -334,6 +330,29 @@ class TestGame:
             self.objects.remove(obj)
             if self.selected_object_index >= len(self.objects):
                 self.selected_object_index = len(self.objects) - 1
+        
+        for obj in self.objects:
+            if not obj.is_ready_to_fall:
+            # ← このフラグが False の間は空中に固定
+                obj.set_velocity(0, 0)
+                continue
+
+    
+        if self.game_over:
+             return  # ゲームオーバー時は何もしない
+
+        dt = 1.0 / FPS
+        self.space.step(dt)
+
+        margin = 50
+
+        for obj in self.objects:
+            x, y = obj.get_position()
+            if (x < -margin or x > SCREEN_WIDTH + margin or
+                y < -margin or y > SCREEN_HEIGHT + margin):
+                self.game_over = True   # ← ゲームオーバー！
+                print("GAME OVER!")
+                break
     
     def draw(self):
         """画面を描画"""
@@ -344,7 +363,7 @@ class TestGame:
         pygame.draw.rect(
             self.screen,
             GREEN,
-            (0, GROUND_Y, SCREEN_WIDTH, GROUND_HEIGHT)
+            (SCREEN_WIDTH/4, GROUND_Y, SCREEN_WIDTH/2, GROUND_HEIGHT)
         )
         
         # オブジェクトを描画
@@ -365,7 +384,15 @@ class TestGame:
         # UI情報を表示
         self.draw_ui()
         
+        if self.game_over:
+            font = get_japanese_font(60)
+            text = font.render("GAME OVER", True, RED)
+            self.screen.blit(text, (SCREEN_WIDTH//2 - 150, SCREEN_HEIGHT//2 - 30))
+
         pygame.display.flip()
+
+       
+
     
     def draw_ui(self):
         """UIを描画"""
