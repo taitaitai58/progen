@@ -287,15 +287,17 @@ class NonConvexObject:
             # 回転後の画像サイズを取得（回転でサイズが変わるため）
             rot_width, rot_height = rotated_image.get_size()
             
-            # メッシュの重心位置から画像中心へのオフセットを計算（画像座標系）
-            if self.image_size:
+            # メッシュの重心位置から画像中心へのオフセットを計算
+            # mesh_centerは画像座標系（左上が原点）での絶対座標
+            # 画像中心は (img_w/2, img_h/2)
+            if self.image_size and self.mesh_center:
                 img_w, img_h = self.image_size
                 image_center_x = img_w / 2.0
                 image_center_y = img_h / 2.0
-                # 画像中心からのメッシュ重心のオフセット
+                # 画像中心からのメッシュ重心のオフセット（画像座標系）
                 offset_x = self.mesh_center[0] - image_center_x
                 offset_y = self.mesh_center[1] - image_center_y
-                # スケールを適用
+                # スケールを適用（ゲーム座標系に変換）
                 offset_x *= mesh_scale
                 offset_y *= mesh_scale
                 # 回転を適用

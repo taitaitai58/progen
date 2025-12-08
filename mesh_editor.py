@@ -417,26 +417,11 @@ class MeshEditor:
                 self.load_background_image(image_path)
             
             # 三角形メッシュを読み込み
+            # mesh.x, mesh.yは画像座標系（左上が原点）での絶対座標として保存されている
             loaded_meshes = [
                 TriangleMesh.from_dict(shape_data)
                 for shape_data in mesh_data.get("shapes", [])
             ]
-            
-            # 既存のメッシュデータが画像中心基準でない場合、変換する
-            # （後方互換性のため、画像中心基準に変換）
-            if self.original_image_size:
-                img_width, img_height = self.original_image_size
-                image_center_x = img_width / 2.0
-                image_center_y = img_height / 2.0
-                
-                # メッシュの重心が画像中心から離れている場合、画像中心基準に変換
-                for mesh in loaded_meshes:
-                    # 既に画像中心基準の可能性があるが、念のため確認
-                    # メッシュの重心が画像サイズの範囲外にある場合、画像座標系と判断
-                    if abs(mesh.x) > img_width or abs(mesh.y) > img_height:
-                        # 画像座標系から画像中心基準に変換
-                        mesh.x = mesh.x - image_center_x
-                        mesh.y = mesh.y - image_center_y
             
             self.meshes = loaded_meshes
             

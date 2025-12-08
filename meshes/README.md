@@ -28,3 +28,4 @@ meshes/
 - `mesh.json`は必須です
 - 画像ファイルは任意ですが、推奨されます（.png, .jpg, .jpeg, .bmp対応）
 
+

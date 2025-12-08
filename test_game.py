@@ -119,15 +119,6 @@ class TestGame:
                 if image_path and os.path.exists(image_path):
                     self.texture_path = image_path
                 
-                # メッシュ定義を作成（1/5スケール）
-                mesh_definitions = []
-                scale = 0.2  # 1/5スケール
-                
-                # メッシュの重心位置を保存
-                mesh_center_x = meshes[0].x if meshes else 0
-                mesh_center_y = meshes[0].y if meshes else 0
-                self.mesh_center = (mesh_center_x, mesh_center_y)
-                
                 # 画像サイズを取得
                 if image_path and os.path.exists(image_path):
                     try:
@@ -135,6 +126,16 @@ class TestGame:
                         self.image_size = temp_img.get_size()
                     except:
                         pass
+                
+                # メッシュ定義を作成（1/5スケール）
+                mesh_definitions = []
+                scale = 0.2  # 1/5スケール
+                
+                # メッシュの重心位置を保存（画像座標系の絶対座標のまま）
+                # mesh_centerは画像座標系（左上が原点）での絶対座標
+                mesh_center_x = meshes[0].x if meshes else 0
+                mesh_center_y = meshes[0].y if meshes else 0
+                self.mesh_center = (mesh_center_x, mesh_center_y)
                 
                 for mesh in meshes:
                     for triangle in mesh.triangles:
