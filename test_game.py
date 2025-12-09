@@ -7,6 +7,7 @@ import pymunk
 import os
 import json
 import math
+import random
 from config import (
     SCREEN_WIDTH, SCREEN_HEIGHT, GRAVITY, FPS,
     GROUND_HEIGHT, GROUND_Y, BLACK, GREEN, WHITE, RED, YELLOW, BLUE,
@@ -14,6 +15,28 @@ from config import (
 )
 from animals import NonConvexObject
 from mesh_editor import TriangleMesh
+
+class Cloud:
+    def __init__(self, screen_width, screen_height):
+        self.x = random.randint(0, screen_width)
+        self.y = random.randint(30, screen_height // 3)
+
+        self.speed = random.uniform(0.3, 1.0)
+        
+        # 雲の大きさランダム
+        base_size = random.randint(80, 180)
+        self.size = (base_size, base_size // 2)
+
+        # 白い楕円の雲を簡易生成（画像不要）
+        self.image = pygame.Surface(self.size, pygame.SRCALPHA)
+        pygame.draw.ellipse(self.image, (255, 255, 255, 180), (0, 0, *self.size))
+
+    def update(self):
+        self.x += self.speed
+        return self.x  # x が返るので範囲外判定に使える
+
+    def draw(self, screen):
+        screen.blit(self.image, (self.x, self.y))
 
 
 class TestGame:
@@ -54,6 +77,9 @@ class TestGame:
 
         self.spawn_x = SCREEN_WIDTH // 2     # 画面中央
         self.spawn_y = 100                   # 上のほう
+
+        self.clouds = [Cloud(SCREEN_WIDTH, SCREEN_HEIGHT) for _ in range(5)]
+
 
 
     
@@ -212,16 +238,9 @@ class TestGame:
             
             elif event.type == pygame.KEYDOWN:
                 obj = self.get_selected_object()
-
-                # オブジェクト選択
-                if event.key == pygame.K_TAB:
-                    if pygame.key.get_mods() & pygame.KMOD_SHIFT:
-                        self.select_previous_object()
-                    else:
-                        self.select_next_object()
                 
                 # ★ スペースで落下 → 次スポーン ★
-                elif event.key == pygame.K_SPACE:
+                if event.key == pygame.K_SPACE:
                     obj = self.get_selected_object()
                     if obj:
                         # 今のオブジェクトを落下開始
@@ -237,16 +256,6 @@ class TestGame:
                         physics_enabled=False
                     )
                     print("次のオブジェクトをスポーンしました")
-
-                # 物理エンジンON/OFF
-                elif event.key == pygame.K_p:
-                    if obj:
-                        if obj.is_physics_enabled():
-                            obj.disable_physics()
-                            print("物理エンジンをOFFにしました")
-                        else:
-                            obj.enable_physics()
-                            print("物理エンジンをONにしました")
 
                 # オブジェクト削除
                 elif event.key == pygame.K_DELETE or event.key == pygame.K_BACKSPACE:
@@ -268,7 +277,8 @@ class TestGame:
                 # 位置リセット
                 elif event.key == pygame.K_h:
                     if obj:
-                        obj.set_position(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
+                        obj.set_position( self.spawn_x,
+                        self.spawn_y,)
                         print("位置をリセットしました")
 
                 # 角度リセット
@@ -311,6 +321,15 @@ class TestGame:
 
     
     def update(self):
+        # 雲の更新
+        for cloud in self.clouds:
+            cloud.update()
+
+        # 画面右に抜けた雲は左から新しい雲に入れ替える
+        for i, cloud in enumerate(self.clouds):
+            if cloud.x > SCREEN_WIDTH + 100:
+                self.clouds[i] = Cloud(SCREEN_WIDTH, SCREEN_HEIGHT)
+
         """ゲームの状態を更新"""
         # 選択中のオブジェクトで位置選択中のものは物理エンジンを無効にする
         selected_obj = self.get_selected_object()
@@ -364,6 +383,14 @@ class TestGame:
         """画面を描画"""
         # 背景をクリア
         self.screen.fill((135, 206, 235))  # 空色
+
+        # 背景をクリア
+        self.screen.fill((135, 206, 235))  # 空色
+
+        # ☁️ 雲を描画（背景のうしろ）
+        for cloud in self.clouds:
+            cloud.draw(self.screen)
+
         
         # 地面を描画
         pygame.draw.rect(
@@ -448,15 +475,11 @@ class TestGame:
         # 操作説明
         instructions = [
             "=== 操作説明 ===",
-            "左クリック: 物理エンジンONでオブジェクト生成",
-            "右クリック: 物理エンジンOFFでオブジェクト生成",
-            "Tab: 次のオブジェクトを選択",
-            "Shift+Tab: 前のオブジェクトを選択",
-            "P: 物理エンジンのON/OFF切り替え",
+            "スペースキー: 物理エンジンoffでオブジェクト生成",
             "矢印キー: 位置を移動",
             "Q/E: 角度を回転",
             "W/A/S/D: 速度を設定（物理ON時のみ）",
-            "H: 位置をリセット（画面中央）",
+            "H: 位置をリセット",
             "0: 角度をリセット",
             "Delete/Backspace: 選択中のオブジェクトを削除",
             "R: すべてのオブジェクトを削除",
