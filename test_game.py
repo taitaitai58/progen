@@ -52,6 +52,9 @@ class TestGame:
         # ゲームオーバー判定
         self.game_over = False
 
+        self.spawn_x = SCREEN_WIDTH // 2     # 画面中央
+        self.spawn_y = 100                   # 上のほう
+
 
     
     def create_ground(self):
@@ -201,28 +204,15 @@ class TestGame:
             self.selected_object_index = -1
     
     def handle_events(self):
-        """イベントを処理"""
         keys = pygame.key.get_pressed()
         
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                return False
-            
-            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                x, y = event.pos
-
-                # ★ 古い操作中オブジェクトがあれば落下させる（これが強制落下）
-                for o in self.objects:
-                    if not o.is_ready_to_fall:
-                        o.is_ready_to_fall = True
-                        o.enable_physics()
-
-                # ★ 新しいオブジェクト（物理OFF）を生成
-                self.create_object(x, y, physics_enabled=False)
-
+                return False        
             
             elif event.type == pygame.KEYDOWN:
-                obj = self.get_selected_object()               
+                obj = self.get_selected_object()
+
                 # オブジェクト選択
                 if event.key == pygame.K_TAB:
                     if pygame.key.get_mods() & pygame.KMOD_SHIFT:
@@ -230,17 +220,25 @@ class TestGame:
                     else:
                         self.select_next_object()
                 
+                # ★ スペースで落下 → 次スポーン ★
                 elif event.key == pygame.K_SPACE:
                     obj = self.get_selected_object()
                     if obj:
-                        # 位置選択が終わったので、物理エンジンを有効にして落下開始
+                        # 今のオブジェクトを落下開始
                         obj.is_ready_to_fall = True
                         obj.enable_physics()
-                        # 落下開始時は速度を0にリセット（重力のみで落下）
                         obj.set_velocity(0, 0)
                         print("落下開始！")
-                
-                # 物理エンジンのON/OFF
+
+                    # 次のオブジェクトをスポーン（物理OFF）
+                    new_obj = self.create_object(
+                        self.spawn_x,
+                        self.spawn_y,
+                        physics_enabled=False
+                    )
+                    print("次のオブジェクトをスポーンしました")
+
+                # 物理エンジンON/OFF
                 elif event.key == pygame.K_p:
                     if obj:
                         if obj.is_physics_enabled():
@@ -249,8 +247,8 @@ class TestGame:
                         else:
                             obj.enable_physics()
                             print("物理エンジンをONにしました")
-                
-                # オブジェクトの削除
+
+                # オブジェクト削除
                 elif event.key == pygame.K_DELETE or event.key == pygame.K_BACKSPACE:
                     if obj and len(self.objects) > 0:
                         obj.remove()
@@ -258,50 +256,47 @@ class TestGame:
                         if self.selected_object_index >= len(self.objects):
                             self.selected_object_index = len(self.objects) - 1
                         print("オブジェクトを削除しました")
-                
+
                 # 全削除
                 elif event.key == pygame.K_r:
-                    for obj in self.objects:
-                        obj.remove()
+                    for o in self.objects:
+                        o.remove()
                     self.objects.clear()
                     self.selected_object_index = -1
                     print("すべてのオブジェクトを削除しました")
-                
-                # 位置をリセット
+
+                # 位置リセット
                 elif event.key == pygame.K_h:
                     if obj:
-                        x, y = obj.get_position()
                         obj.set_position(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
-                        print(f"位置をリセットしました: ({SCREEN_WIDTH // 2}, {SCREEN_HEIGHT // 2})")
-                
-                # 角度をリセット
+                        print("位置をリセットしました")
+
+                # 角度リセット
                 elif event.key == pygame.K_0:
                     if obj:
                         obj.set_angle_degrees(0)
                         print("角度をリセットしました")
-                
-                
-        
-        # 連続入力の処理
+
+        # ---- 連続キー入力処理 ---- #
         obj = self.get_selected_object()
         if obj:
-            # 矢印キーで位置を変更
+            # 位置調整（物理OFF時のみ）
             if keys[pygame.K_LEFT]:
                 x, y = obj.get_position()
                 obj.set_position(x - self.move_speed, y)
             if keys[pygame.K_RIGHT]:
                 x, y = obj.get_position()
                 obj.set_position(x + self.move_speed, y)
-            
-            # Q/Eキーで角度を変更
+
+            # 角度変更
             if keys[pygame.K_q]:
                 angle = obj.get_angle_degrees()
                 obj.set_angle_degrees(angle - self.rotate_speed)
             if keys[pygame.K_e]:
                 angle = obj.get_angle_degrees()
                 obj.set_angle_degrees(angle + self.rotate_speed)
-            
-            # W/A/S/Dキーで速度を設定（物理エンジンON時のみ）
+
+            # 物理ON時の速度設定
             if obj.is_physics_enabled():
                 if keys[pygame.K_w]:
                     obj.set_velocity(0, -500)
@@ -311,8 +306,9 @@ class TestGame:
                     obj.set_velocity(-500, 0)
                 if keys[pygame.K_d]:
                     obj.set_velocity(500, 0)
-        
+
         return True
+
     
     def update(self):
         """ゲームの状態を更新"""
